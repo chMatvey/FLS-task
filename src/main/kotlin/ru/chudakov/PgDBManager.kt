@@ -9,23 +9,19 @@ import java.sql.Date
 import java.sql.SQLException
 
 
-class PgDBManager(url: String, username: String, password: String) : DBManager(url) {
-    override val driverClassName = "org.postgresql.Driver"
+class PgDBManager(url: String, username: String, password: String) {
+    private val driverClassName = "org.postgresql.Driver"
 
     private val connectionPool = BasicDataSource()
-
-    private val connectionCount = 20
 
     init {
         connectionPool.driverClassName = driverClassName
         connectionPool.url = url
         connectionPool.username = username
         connectionPool.password = password
-        connectionPool.initialSize = connectionCount
 
-        val connection = connectionPool.connection
+        getConnection().createStatement().use {
 
-        connection.createStatement().use {
             it.execute("create table if not exists profiles(" +
                     "id SERIAL primary key, " +
                     "name varchar(50) UNIQUE, " +
@@ -36,10 +32,7 @@ class PgDBManager(url: String, username: String, password: String) : DBManager(u
             it.execute("DO \$\$\n" +
                     "BEGIN\n" +
                     "    IF NOT EXISTS (SELECT 1 FROM pg_type WHERE typname = 'action_type') THEN\n" +
-                    "        CREATE TYPE action_type AS ENUM\n" +
-                    "        (\n" +
-                    "            'PROFILE_CREATED', 'LOGIN', 'CHANGE_PASSWORD'\n" +
-                    "        );\n" +
+                    "        CREATE TYPE action_type AS ENUM('PROFILE_CREATED', 'LOGIN', 'CHANGE_PASSWORD');\n" +
                     "    END IF;\n" +
                     "END\$\$;")
 
@@ -49,9 +42,12 @@ class PgDBManager(url: String, username: String, password: String) : DBManager(u
                     "actionType action_type, " +
                     "profile_id integer references profiles (id)" + ");"
             )
-            it.close()
         }
     }
+
+    private fun getConnection(): Connection = connectionPool.connection
+
+    private fun getCurrentDate(): Date = Date(java.util.Date().time)
 
     private fun findProfileByName(connection: Connection, name: String): Profile? {
         val findProfileByNameQuery = "select * from profiles where name = ?"
@@ -72,13 +68,11 @@ class PgDBManager(url: String, username: String, password: String) : DBManager(u
         return result
     }
 
-    private fun getCurrentDate(): Date = Date(java.util.Date().time)
-
-    override fun createProfile(name: String, password: String): Boolean {
+    fun createProfile(name: String, password: String): Boolean {
         val createProfileQuery = "insert into profiles(name, password, lastConnectDate) values(?,?,?)"
         val addActionQuery = "insert into actions(dateCreated, actionType, profile_id) values (?, 'PROFILE_CREATED', ?)"
 
-        val connection = connectionPool.connection
+        val connection = getConnection()
         connection.autoCommit = false
 
         try {
@@ -108,15 +102,17 @@ class PgDBManager(url: String, username: String, password: String) : DBManager(u
         } catch (e: SQLException) {
             connection.rollback()
             return false
+        } finally {
+            connection.close()
         }
     }
 
-    override fun getAuthorizationResult(name: String, password: String): Boolean {
+    fun getAuthorizationResult(name: String, password: String): Boolean {
         val findUserQuery = "select * from profiles where name = ? and password = ?"
         val updateLastConnect = "update profiles set lastConnectDate = ? where name = ?"
         val addActionQuery = "insert into actions(dateCreated, actionType, profile_id) values(?, 'LOGIN', ?)"
 
-        val connection = connectionPool.connection
+        val connection = getConnection()
         connection.autoCommit = false
 
         try {
@@ -151,48 +147,68 @@ class PgDBManager(url: String, username: String, password: String) : DBManager(u
         } catch (e: SQLException) {
             connection.rollback()
             return false
+        } finally {
+            connection.close()
         }
     }
 
-    override fun getProfileActionByUsername(name: String): List<Action> {
+    fun getProfileActionByUsername(name: String): List<Action> {
         val query = "select * from actions where profile_id = ?"
-
-        val connection = connectionPool.connection
-        connection.autoCommit = true
 
         val result = mutableListOf<Action>()
 
-        connection.prepareStatement(query).use {
-            val profile = findProfileByName(connection, name) ?: return@use
+        getConnection().use { connection ->
+            connection.autoCommit = true
 
-            it.setInt(1, profile.id)
-            val rs = it.executeQuery()
-            while (rs.next()) {
-                result.add(Action(
-                        rs.getInt("id"),
-                        rs.getDate("dateCreated"),
-                        ActionType.valueOf(rs.getString("actionType")),
-                        null
-                ))
+            connection.prepareStatement(query).use {
+                val profile = findProfileByName(connection, name) ?: return emptyList()
+
+                it.setInt(1, profile.id)
+                val rs = it.executeQuery()
+                while (rs.next()) {
+                    result.add(Action(
+                            rs.getInt("id"),
+                            rs.getDate("dateCreated"),
+                            ActionType.valueOf(rs.getString("actionType")),
+                            null
+                    ))
+                }
             }
         }
         return result
     }
 
-    override fun changePassword(name: String, oldPassword: String, newPassword: String): Boolean {
-        val query = "update profiles set password = ? where name = ? and password = ?"
+    fun changePassword(name: String, oldPassword: String, newPassword: String): Boolean {
+        val changePasswordQuery = "update profiles set password = ? where name = ? and password = ?"
+        val addActionQuery = "insert into actions(dateCreated, actionType, profile_id) values(?, 'CHANGE_PASSWORD', ?)"
 
-        val connection = connectionPool.connection
-        connection.autoCommit = true
+        val connection = getConnection()
+        connection.autoCommit = false
 
-        var result = false
+        try {
+            connection.prepareStatement(changePasswordQuery).use {
+                it.setString(1, newPassword)
+                it.setString(2, name)
+                it.setString(3, oldPassword)
+                if (it.executeUpdate() == 0) return false
+            }
 
-        connection.prepareStatement(query).use {
-            it.setString(1, newPassword)
-            it.setString(2, name)
-            it.setString(3, oldPassword)
-            result = it.executeUpdate() != 0
+            val profile = findProfileByName(connection, name) ?: return false
+
+            connection.prepareStatement(addActionQuery).use {
+                it.setDate(1, getCurrentDate())
+                it.setInt(2, profile.id)
+                it.addBatch()
+                it.executeBatch()
+            }
+
+            connection.commit()
+            return true
+        } catch (e: SQLException) {
+            connection.rollback()
+            return false
+        } finally {
+            connection.close()
         }
-        return result
     }
 }

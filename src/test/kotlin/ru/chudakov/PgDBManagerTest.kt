@@ -9,7 +9,7 @@ internal class PgDBManagerTest {
 
     @Test
     fun createProfile() {
-        assertTrue(pgDBManager.createProfile("profile"))
+        pgDBManager.createProfile("profile", "password")
     }
 
     @Test
@@ -20,12 +20,10 @@ internal class PgDBManagerTest {
     @Test
     fun getProfileActionByUsername() {
         assertTrue(pgDBManager.getProfileActionByUsername("profile").isNotEmpty())
-
-        assertTrue(pgDBManager.getProfileActionByUsername("profile1").isEmpty())
     }
 
     @Test
     fun changePassword() {
-        assertTrue(pgDBManager.changePassword("profile", "password", "password1"))
+        assertTrue(pgDBManager.changePassword("profile", "password", "password"))
     }
 }
