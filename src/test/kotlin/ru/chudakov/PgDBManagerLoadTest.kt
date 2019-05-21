@@ -6,7 +6,7 @@ import org.junit.jupiter.api.Test
 import kotlin.random.Random
 
 class PgDBManagerLoadTest {
-    private val pgDBManager = PgDBManager("jdbc:postgresql://localhost:5433/postgres", "postgres", "admin")
+    private val pgDBManager = PgDBManager(DBConfig.url, DBConfig.userName, DBConfig.password)
 
     private val charPool : List<Char> = ('a'..'z') + ('A'..'Z') + ('0'..'9')
 

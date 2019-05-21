@@ -4,7 +4,7 @@ import org.junit.jupiter.api.Test
 import org.junit.jupiter.api.Assertions.*
 
 class PgDBManagerUnitTest {
-    private val pgDBManager = PgDBManager("jdbc:postgresql://localhost:5433/postgres", "postgres", "admin")
+    private val pgDBManager = PgDBManager(DBConfig.url, DBConfig.userName, DBConfig.password)
 
     @Test
     fun createProfile() {
