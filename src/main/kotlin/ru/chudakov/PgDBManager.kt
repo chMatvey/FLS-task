@@ -5,8 +5,8 @@ import ru.chudakov.dao.Action
 import ru.chudakov.dao.ActionType
 import ru.chudakov.dao.Profile
 import java.sql.Connection
-import java.sql.Date
 import java.sql.SQLException
+import java.sql.Timestamp
 
 
 class PgDBManager(url: String, username: String, password: String) {
@@ -43,11 +43,13 @@ class PgDBManager(url: String, username: String, password: String) {
                     "profile_id integer references profiles (id)" + ");"
             )
         }
+
+        createProfile("profile", "password")
     }
 
     private fun getConnection(): Connection = connectionPool.connection
 
-    private fun getCurrentDate(): Date = Date(java.util.Date().time)
+    private fun getCurrentDate(): Timestamp = Timestamp(java.util.Date().time)
 
     private fun findProfileByName(connection: Connection, name: String): Profile? {
         val findProfileByNameQuery = "select * from profiles where name = ?"
@@ -83,7 +85,7 @@ class PgDBManager(url: String, username: String, password: String) {
             connection.prepareStatement(createProfileQuery).use {
                 it.setString(1, name)
                 it.setString(2, password)
-                it.setDate(3, getCurrentDate())
+                it.setTimestamp(3, getCurrentDate())
                 it.addBatch()
                 it.executeBatch()
             }
@@ -91,7 +93,7 @@ class PgDBManager(url: String, username: String, password: String) {
             val profile = findProfileByName(connection, name) ?: return false
 
             connection.prepareStatement(addActionQuery).use {
-                it.setDate(1, getCurrentDate())
+                it.setTimestamp(1, getCurrentDate())
                 it.setInt(2, profile.id)
                 it.addBatch()
                 it.executeBatch()
@@ -130,13 +132,13 @@ class PgDBManager(url: String, username: String, password: String) {
             }
 
             connection.prepareStatement(updateLastConnect).use {
-                it.setDate(1, getCurrentDate())
+                it.setTimestamp(1, getCurrentDate())
                 it.setString(2, name)
                 it.executeUpdate()
             }
 
             connection.prepareStatement(addActionQuery).use {
-                it.setDate(1, getCurrentDate())
+                it.setTimestamp(1, getCurrentDate())
                 it.setInt(2, profile.id)
                 it.addBatch()
                 it.executeBatch()
@@ -153,7 +155,7 @@ class PgDBManager(url: String, username: String, password: String) {
     }
 
     fun getProfileActionByUsername(name: String): List<Action> {
-        val query = "select * from actions where profile_id = ?"
+        val query = "select * from actions inner join profiles on actions.profile_id = profiles.id where profiles.name = ?"
 
         val result = mutableListOf<Action>()
 
@@ -161,9 +163,7 @@ class PgDBManager(url: String, username: String, password: String) {
             connection.autoCommit = true
 
             connection.prepareStatement(query).use {
-                val profile = findProfileByName(connection, name) ?: return emptyList()
-
-                it.setInt(1, profile.id)
+                it.setString(1, name)
                 val rs = it.executeQuery()
                 while (rs.next()) {
                     result.add(Action(
@@ -196,7 +196,7 @@ class PgDBManager(url: String, username: String, password: String) {
             val profile = findProfileByName(connection, name) ?: return false
 
             connection.prepareStatement(addActionQuery).use {
-                it.setDate(1, getCurrentDate())
+                it.setTimestamp(1, getCurrentDate())
                 it.setInt(2, profile.id)
                 it.addBatch()
                 it.executeBatch()

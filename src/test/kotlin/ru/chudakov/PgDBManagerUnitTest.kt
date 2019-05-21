@@ -1,15 +1,14 @@
 package ru.chudakov
 
 import org.junit.jupiter.api.Test
-
 import org.junit.jupiter.api.Assertions.*
 
-internal class PgDBManagerTest {
+class PgDBManagerUnitTest {
     private val pgDBManager = PgDBManager("jdbc:postgresql://localhost:5433/postgres", "postgres", "admin")
 
     @Test
     fun createProfile() {
-        pgDBManager.createProfile("profile", "password")
+        assertTrue(!pgDBManager.createProfile("profile", "password"))
     }
 
     @Test
