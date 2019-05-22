@@ -14,6 +14,19 @@ class PgDBManager(url: String, username: String, password: String) {
 
     private val connectionPool = BasicDataSource()
 
+    private val findProfileByNameQuery = "select * from profiles where name = ?"
+
+    private val createProfileQuery = "insert into profiles(name, password, lastConnectDate) values(?,?,?)"
+    private val addCreateProfileActionQuery = "insert into actions(dateCreated, actionType, profile_id) values (?, 'PROFILE_CREATED', ?)"
+
+    private val loginQuery = "update profiles set lastConnectDate = ? where name = ? and password = ?"
+    private val addLoginActionQuery = "insert into actions(dateCreated, actionType, profile_id) values(?, 'LOGIN', ?)"
+
+    private val getProfileActionsQuery = "select * from actions inner join profiles on actions.profile_id = profiles.id where profiles.name = ?"
+
+    private val changePasswordQuery = "update profiles set password = ? where name = ? and password = ?"
+    private val addChangePasswordActionQuery = "insert into actions(dateCreated, actionType, profile_id) values(?, 'CHANGE_PASSWORD', ?)"
+
     init {
         connectionPool.driverClassName = driverClassName
         connectionPool.url = url
@@ -52,8 +65,6 @@ class PgDBManager(url: String, username: String, password: String) {
     private fun getCurrentDate(): Timestamp = Timestamp(java.util.Date().time)
 
     private fun findProfileByName(connection: Connection, name: String): Profile? {
-        val findProfileByNameQuery = "select * from profiles where name = ?"
-
         var result: Profile? = null
 
         connection.prepareStatement(findProfileByNameQuery).use { statement ->
@@ -71,17 +82,10 @@ class PgDBManager(url: String, username: String, password: String) {
     }
 
     fun createProfile(name: String, password: String): Boolean {
-        val createProfileQuery = "insert into profiles(name, password, lastConnectDate) values(?,?,?)"
-        val addActionQuery = "insert into actions(dateCreated, actionType, profile_id) values (?, 'PROFILE_CREATED', ?)"
-
         val connection = getConnection()
         connection.autoCommit = false
 
         try {
-            if (findProfileByName(connection, name) != null) {
-                return false
-            }
-
             connection.prepareStatement(createProfileQuery).use {
                 it.setString(1, name)
                 it.setString(2, password)
@@ -90,11 +94,11 @@ class PgDBManager(url: String, username: String, password: String) {
                 it.executeBatch()
             }
 
-            val profile = findProfileByName(connection, name) ?: return false
+            val profile = findProfileByName(connection, name)
 
-            connection.prepareStatement(addActionQuery).use {
+            connection.prepareStatement(addCreateProfileActionQuery).use {
                 it.setTimestamp(1, getCurrentDate())
-                it.setInt(2, profile.id)
+                it.setInt(2, profile!!.id)
                 it.addBatch()
                 it.executeBatch()
             }
@@ -110,36 +114,22 @@ class PgDBManager(url: String, username: String, password: String) {
     }
 
     fun getAuthorizationResult(name: String, password: String): Boolean {
-        val findUserQuery = "select * from profiles where name = ? and password = ?"
-        val updateLastConnect = "update profiles set lastConnectDate = ? where name = ?"
-        val addActionQuery = "insert into actions(dateCreated, actionType, profile_id) values(?, 'LOGIN', ?)"
-
         val connection = getConnection()
         connection.autoCommit = false
 
         try {
-            val profile = connection.prepareStatement(findUserQuery).use {
-                it.setString(1, name)
-                it.setString(2, password)
-                val rs = it.executeQuery()
-                if (rs.next()) {
-                    Profile(rs.getInt("id"),
-                            rs.getString("name"),
-                            rs.getString("password"),
-                            rs.getDate("lastConnectDate")
-                    )
-                } else return false
-            }
-
-            connection.prepareStatement(updateLastConnect).use {
+            connection.prepareStatement(loginQuery).use {
                 it.setTimestamp(1, getCurrentDate())
                 it.setString(2, name)
-                it.executeUpdate()
+                it.setString(3, password)
+                if (it.executeUpdate() == 0) return false
             }
 
-            connection.prepareStatement(addActionQuery).use {
+            val profile = findProfileByName(connection, name)
+
+            connection.prepareStatement(addLoginActionQuery).use {
                 it.setTimestamp(1, getCurrentDate())
-                it.setInt(2, profile.id)
+                it.setInt(2, profile!!.id)
                 it.addBatch()
                 it.executeBatch()
             }
@@ -155,14 +145,12 @@ class PgDBManager(url: String, username: String, password: String) {
     }
 
     fun getProfileActionByUsername(name: String): List<Action> {
-        val query = "select * from actions inner join profiles on actions.profile_id = profiles.id where profiles.name = ?"
-
         val result = mutableListOf<Action>()
 
         getConnection().use { connection ->
             connection.autoCommit = true
 
-            connection.prepareStatement(query).use {
+            connection.prepareStatement(getProfileActionsQuery).use {
                 it.setString(1, name)
                 val rs = it.executeQuery()
                 while (rs.next()) {
@@ -179,9 +167,6 @@ class PgDBManager(url: String, username: String, password: String) {
     }
 
     fun changePassword(name: String, oldPassword: String, newPassword: String): Boolean {
-        val changePasswordQuery = "update profiles set password = ? where name = ? and password = ?"
-        val addActionQuery = "insert into actions(dateCreated, actionType, profile_id) values(?, 'CHANGE_PASSWORD', ?)"
-
         val connection = getConnection()
         connection.autoCommit = false
 
@@ -193,11 +178,11 @@ class PgDBManager(url: String, username: String, password: String) {
                 if (it.executeUpdate() == 0) return false
             }
 
-            val profile = findProfileByName(connection, name) ?: return false
+            val profile = findProfileByName(connection, name)
 
-            connection.prepareStatement(addActionQuery).use {
+            connection.prepareStatement(addChangePasswordActionQuery).use {
                 it.setTimestamp(1, getCurrentDate())
-                it.setInt(2, profile.id)
+                it.setInt(2, profile!!.id)
                 it.addBatch()
                 it.executeBatch()
             }
