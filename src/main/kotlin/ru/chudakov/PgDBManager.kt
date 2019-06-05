@@ -1,9 +1,9 @@
 package ru.chudakov
 
 import org.apache.commons.dbcp2.BasicDataSource
-import ru.chudakov.dao.Action
-import ru.chudakov.dao.ActionType
-import ru.chudakov.dao.Profile
+import ru.chudakov.data.Action
+import ru.chudakov.data.ActionType
+import ru.chudakov.data.Profile
 import java.sql.Connection
 import java.sql.SQLException
 import java.sql.Timestamp
@@ -53,7 +53,7 @@ class PgDBManager(url: String, username: String, password: String) {
                     "id SERIAL primary key, " +
                     "dateCreated timestamp, " +
                     "actionType action_type, " +
-                    "profile_id integer references profiles (id)" + ");"
+                    "profile_id integer references profiles (id) ON DELETE CASCADE ON UPDATE CASCADE" + ");"
             )
         }
 

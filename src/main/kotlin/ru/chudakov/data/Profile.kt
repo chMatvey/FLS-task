@@ -1,4 +1,4 @@
-package ru.chudakov.dao
+package ru.chudakov.data
 
 import java.sql.Date
 
